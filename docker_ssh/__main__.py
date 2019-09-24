@@ -1,4 +1,4 @@
-from docker_tunnel.cli import main
+from docker_ssh.cli import main
 
 if __name__ == '__main__':
     main()
