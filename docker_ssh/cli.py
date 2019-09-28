@@ -3,14 +3,40 @@ import fcntl
 import logging
 import multiprocessing
 import os
-import queue
+import sys
+
+if sys.version_info[0] >= 3:
+    import queue
+else:
+    import Queue as queue
 import shutil
 import signal
 import subprocess
-import sys
 import tempfile
 
 MATCH = "26820623525859311892"
+
+if sys.version_info[0] >= 3:
+    run = subprocess.run
+else:
+    def run(args, x=None, check=False, **kwargs):
+        if x is not None:
+            if 'stdin' in kwargs:
+                raise ValueError('stdin and input arguments may not both be used.')
+            kwargs['stdin'] = subprocess.PIPE
+
+        process = subprocess.Popen(args, **kwargs)
+        try:
+            stdout, stderr = process.communicate(x)
+        except:
+            process.kill()
+            process.wait()
+            raise
+        retcode = process.poll()
+        if check and retcode:
+            raise subprocess.CalledProcessError(
+                retcode, process.args, output=stdout, stderr=stderr)
+        return retcode, stdout, stderr
 
 
 def tunnel_main(host, local_socket, remote_socket, kill_queue, done_queue):
@@ -20,16 +46,30 @@ def tunnel_main(host, local_socket, remote_socket, kill_queue, done_queue):
     total_lines = 0
     lines_buffer = []
 
-    with subprocess.Popen(
+    proc = subprocess.Popen(
             args,
             stdout=subprocess.PIPE,
             stdin=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-    ) as proc:
+    )
+
+    def readline():
+        if sys.version_info[0] >= 3:
+            return proc.stdout.readline()
+        else:
+            try:
+                return proc.stdout.readline()
+            except IOError as e:
+                if e.errno == 11:
+                    return b''
+                else:
+                    raise
+
+    try:
         proc.stdin.write(b'echo %s\n' % MATCH.encode())
         proc.stdin.flush()
         while True:
-            line = proc.stdout.readline()
+            line = readline()
 
             if line == b'':
                 proc.wait(0)
@@ -53,7 +93,7 @@ def tunnel_main(host, local_socket, remote_socket, kill_queue, done_queue):
 
         while True:
             while True:
-                line = proc.stdout.readline()
+                line = readline()
 
                 if line != b'':
                     logging.getLogger('main').error('OUT: %s', line)
@@ -66,6 +106,9 @@ def tunnel_main(host, local_socket, remote_socket, kill_queue, done_queue):
                 return
             except queue.Empty:
                 pass
+    finally:
+        proc.kill()
+        proc.wait()
 
 
 def main():
@@ -101,7 +144,7 @@ def main():
         env = dict(os.environ)
         env[args.env] = 'unix://' + docker_socket
 
-        res = subprocess.run(args.docker_args, stderr=sys.stderr, stdout=sys.stdout, stdin=sys.stdin, env=env)
+        res = run(args.docker_args, stderr=sys.stderr, stdout=sys.stdout, stdin=sys.stdin, env=env)
     except KeyboardInterrupt:
         os.kill(process_tunnel.pid, signal.SIGTERM)
     except queue.Empty:
@@ -116,7 +159,7 @@ def main():
         shutil.rmtree(tempdir)
 
 
-def create_parser(parser: argparse.ArgumentParser):
+def create_parser(parser):
     parser.add_argument(
         '--timeout',
         dest='timeout',

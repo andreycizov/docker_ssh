@@ -7,7 +7,7 @@ test_reqs = [x.strip() for x in open('requirements-tests.txt').readlines()]
 
 setup(
     name='docker_ssh',
-    version='0.0.1',
+    version='0.0.3',
     author='Andrey Cizov',
     author_email='acizov@gmail.com',
     packages=find_packages(include=('docker_ssh', 'docker_ssh.*',)),
