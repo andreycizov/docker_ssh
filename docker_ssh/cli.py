@@ -39,9 +39,14 @@ else:
         return retcode, stdout, stderr
 
 
-def tunnel_main(host, local_socket, remote_socket, kill_queue, done_queue):
+def tunnel_main(host, local_socket, remote_socket, ssh_args, kill_queue, done_queue):
     tunnel_spec = '%s:%s' % (local_socket, remote_socket)
-    args = ["ssh", "-o", "ExitOnForwardFailure yes", "-L", tunnel_spec, host]
+    args = ["ssh", "-o", "ExitOnForwardFailure yes"]
+
+    if ssh_args:
+        args.extend(ssh_args)
+
+    args.extend(["-L", tunnel_spec, host])
 
     total_lines = 0
     lines_buffer = []
@@ -111,10 +116,10 @@ def tunnel_main(host, local_socket, remote_socket, kill_queue, done_queue):
         proc.wait()
 
 
-def main():
+def main(use_args=None):
     parser = argparse.ArgumentParser()
     create_parser(parser)
-    args, unknown = parser.parse_known_args()
+    args, unknown = parser.parse_known_args(args=use_args)
     args.docker_args = unknown
 
     tempdir = tempfile.mkdtemp()
@@ -126,7 +131,7 @@ def main():
 
     process_tunnel = multiprocessing.Process(target=tunnel_main, args=(
         args.host, docker_socket, args.remote_socket,
-        kill_queue, done_queue
+        args.ssh_args, kill_queue, done_queue
     ))
     process_tunnel.start()
 
@@ -180,6 +185,14 @@ def create_parser(parser):
         dest='env',
         default='DOCKER_HOST',
         help='Environment variable to set the new socket to (default: %(default)s)',
+    )
+
+    parser.add_argument(
+        '--ssh-args',
+        dest='ssh_args',
+        action='append',
+        default=[],
+        help='Optional argument(s) to be added to ssh command'
     )
 
     parser.add_argument(
