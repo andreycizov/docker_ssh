@@ -98,3 +98,6 @@ target/
 *.gz
 *.zip
 .eggs
+
+.vscode/
+.venv/
